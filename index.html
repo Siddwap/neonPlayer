@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+<title>⚡ Neon Player</title>
+
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://sad.adsgram.ai/js/sad.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+<!-- Monetag Script (Apna tag yahan paste karein) -->
+<!-- <script src="https://YOUR_DOMAIN/vignette.min.js" data-zone="YOUR_ZONE_ID" data-sdk="show_YOUR_ZONE_ID"></script> -->
+
+<style>
+  :root {
+    --neon-cyan: #00f0ff; --neon-magenta: #ff00e0; --neon-purple: #a855f7;
+    --neon-lime: #a3ff12; --bg-dark: #06060f; --text-main: #e8f4ff; --text-dim: #8ea8c4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100vw; height: 100vh; background: #000; color: var(--text-main);
+    font-family: 'Rajdhani', -apple-system, sans-serif; overflow: hidden;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body { background: var(--tg-theme-bg-color, #000); }
+
+  /* ─── TELEGRAM RESTRICTION ─── */
+  .tg-restriction {
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; background: #000;
+    z-index: 10000; padding: 20px; text-align: center; gap: 20px;
+  }
+  .tg-restriction .icon { font-size: 5rem; filter: drop-shadow(0 0 30px rgba(255,0,100,0.8)); }
+  .tg-restriction h1 { font-family: 'Orbitron', sans-serif; color: #ff6b9d; font-size: 1.8rem; letter-spacing: 2px; }
+  .tg-restriction p { color: var(--text-dim); font-size: 1rem; line-height: 1.6; max-width: 400px; }
+
+  /* ─── INPUT SCREEN ─── */
+  .input-screen {
+    position: fixed; inset: 0; display: none; flex-direction: column;
+    align-items: center; justify-content: center; background: #000;
+    z-index: 800; padding: 24px; text-align: center; gap: 24px;
+  }
+  .input-screen::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(circle at 20% 10%, rgba(0,240,255,0.18), transparent 40%),
+      radial-gradient(circle at 80% 90%, rgba(255,0,224,0.18), transparent 40%),
+      linear-gradient(rgba(0,240,255,0.04) 1px, transparent 1px) 0 0 / 40px 40px,
+      linear-gradient(90deg, rgba(0,240,255,0.04) 1px, transparent 1px) 0 0 / 40px 40px;
+    animation: bgShift 20s ease-in-out infinite alternate; z-index: -1;
+  }
+  @keyframes bgShift { 0% { background-position: 0 0, 0 0, 0 0, 0 0; } 100% { background-position: 0 0, 0 0, 40px 40px, 40px 40px; } }
+  .input-screen .logo {
+    font-family: 'Orbitron', sans-serif; font-weight: 900;
+    font-size: clamp(1.8rem, 5vw, 2.8rem); letter-spacing: 4px;
+    background: linear-gradient(90deg, var(--neon-cyan), var(--neon-magenta), var(--neon-purple));
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 0 18px rgba(0,240,255,0.5));
+  }
+  .input-box { width: 100%; max-width: 500px; display: flex; flex-direction: column; gap: 14px; }
+  .input-box input {
+    width: 100%; background: rgba(0,0,0,0.55); border: 1px solid rgba(0,240,255,0.3);
+    border-radius: 12px; padding: 16px 20px; color: var(--text-main);
+    font-family: 'Rajdhani', sans-serif; font-size: 1rem; outline: none;
+  }
+  .input-box input:focus { border-color: var(--neon-cyan); box-shadow: 0 0 20px rgba(0,240,255,0.4); }
+  .input-box button {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    border: none; border-radius: 12px; padding: 16px 28px;
+    color: #000; font-family: 'Orbitron', sans-serif; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase; cursor: pointer; font-size: 0.95rem;
+    display: flex; justify-content: center; align-items: center; gap: 10px;
+  }
+  .input-box button:disabled { opacity: 0.7; cursor: not-allowed; }
+  
+  /* Loader inside button */
+  .btn-loader {
+    width: 18px; height: 18px; border: 2px solid #000; border-top-color: transparent;
+    border-radius: 50%; animation: spin 0.8s linear infinite; display: none;
+  }
+  .input-box button.loading .btn-loader { display: block; }
+
+  .input-error {
+    color: #ff6b9d; font-size: 0.9rem; padding: 10px 14px;
+    background: rgba(255,0,100,0.1); border-left: 3px solid #ff0064;
+    border-radius: 8px; display: none; text-align: left;
+  }
+  .input-error.show { display: block; }
+
+  /* ─── LOADING SCREEN (Only for buffering after ad) ─── */
+  .loading-screen {
+    position: fixed; inset: 0; display: none; flex-direction: column;
+    align-items: center; justify-content: center; background: #000;
+    z-index: 900; gap: 32px; padding: 20px; text-align: center;
+    transition: opacity 0.5s ease;
+  }
+  .loading-screen.show { display: flex; }
+  .loading-screen.hide { opacity: 0; pointer-events: none; }
+  .loading-screen::before {
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(circle at 20% 10%, rgba(0,240,255,0.18), transparent 40%),
+      radial-gradient(circle at 80% 90%, rgba(255,0,224,0.18), transparent 40%),
+      linear-gradient(rgba(0,240,255,0.04) 1px, transparent 1px) 0 0 / 40px 40px,
+      linear-gradient(90deg, rgba(0,240,255,0.04) 1px, transparent 1px) 0 0 / 40px 40px;
+    animation: bgShift 20s ease-in-out infinite alternate; z-index: -1;
+  }
+  .spinner-wrap { position: relative; width: 140px; height: 140px; }
+  .spinner-ring { position: absolute; inset: 0; border-radius: 50%; border: 3px solid transparent; }
+  .spinner-ring:nth-child(1) { border-top-color: var(--neon-cyan); animation: spin 1.2s linear infinite; }
+  .spinner-ring:nth-child(2) { inset: 12px; border-right-color: var(--neon-magenta); animation: spin 1.8s linear infinite reverse; }
+  .spinner-ring:nth-child(3) { inset: 24px; border-bottom-color: var(--neon-purple); animation: spin 2.5s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner-center { position: absolute; inset: 36px; border-radius: 50%; background: radial-gradient(circle, rgba(0,240,255,0.15), transparent 70%); display: flex; align-items: center; justify-content: center; font-size: 2rem; }
+  .loading-title { font-family: 'Orbitron', sans-serif; font-size: clamp(1.5rem, 4vw, 2.4rem); font-weight: 900; letter-spacing: 4px; background: linear-gradient(90deg, var(--neon-cyan), var(--neon-magenta), var(--neon-purple)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+  .loading-status { color: var(--text-dim); font-size: clamp(0.85rem, 2vw, 1.05rem); letter-spacing: 2px; text-transform: uppercase; }
+  .loading-status .dot { display: inline-block; animation: dotBlink 1.4s infinite; }
+  @keyframes dotBlink { 0%, 60%, 100% { opacity: 0.2; } 30% { opacity: 1; } }
+
+  /* ─── ERROR SCREEN ─── */
+  .error-screen {
+    position: fixed; inset: 0; display: none; flex-direction: column;
+    align-items: center; justify-content: center; background: #000;
+    z-index: 950; padding: 20px; text-align: center; gap: 24px;
+  }
+  .error-screen.show { display: flex; }
+  .error-box {
+    display: flex; flex-direction: column; align-items: center; gap: 20px;
+    padding: 40px 30px; background: rgba(15,15,30,0.85);
+    border: 1px solid rgba(255,0,100,0.4); border-radius: 18px;
+    backdrop-filter: blur(16px); max-width: 500px;
+  }
+  .error-icon { font-size: 4rem; }
+  .error-title { font-family: 'Orbitron', sans-serif; color: #ff6b9d; font-size: 1.4rem; letter-spacing: 2px; }
+  .error-msg { color: var(--text-dim); font-size: 0.95rem; line-height: 1.5; }
+  .error-back-btn {
+    background: linear-gradient(135deg, var(--neon-cyan), var(--neon-purple));
+    border: none; border-radius: 12px; padding: 14px 32px;
+    color: #000; font-family: 'Orbitron', sans-serif; font-weight: 700;
+    letter-spacing: 2px; text-transform: uppercase; cursor: pointer; font-size: 0.9rem;
+    margin-top: 10px;
+  }
+
+  /* ─── PLAYER ─── */
+  .player-wrap { position: fixed; inset: 0; background: #000; display: none; z-index: 10; }
+  .player-wrap.show { display: block; }
+  video { width: 100%; height: 100%; display: block; background: #000; object-fit: contain; }
+  .float-controls { position: absolute; top: 20px; right: 20px; display: flex; gap: 10px; z-index: 20; opacity: 0; transition: opacity 0.3s; }
+  .player-wrap:hover .float-controls, .float-controls.visible { opacity: 1; }
+  .ctrl-btn { width: 44px; height: 44px; background: rgba(0,0,0,0.6); backdrop-filter: blur(10px); border: 1px solid rgba(0,240,255,0.35); border-radius: 50%; color: var(--neon-cyan); font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+  .title-overlay { position: absolute; top: 20px; left: 20px; max-width: 60%; background: rgba(0,0,0,0.55); backdrop-filter: blur(10px); border-left: 3px solid var(--neon-cyan); padding: 10px 16px; border-radius: 6px; font-family: 'Orbitron', sans-serif; font-size: 0.85rem; z-index: 20; opacity: 0; transition: opacity 0.3s; pointer-events: none; word-break: break-word; }
+  .player-wrap:hover .title-overlay, .title-overlay.visible { opacity: 1; }
+  .file-list-overlay { position: absolute; bottom: 90px; left: 20px; right: 20px; background: rgba(6,6,15,0.92); backdrop-filter: blur(16px); border: 1px solid rgba(0,240,255,0.3); border-radius: 14px; padding: 16px 20px; z-index: 20; max-height: 40vh; overflow-y: auto; opacity: 0; transform: translateY(20px); transition: all 0.3s; pointer-events: none; }
+  .file-list-overlay.visible { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .file-item { padding: 10px 14px; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; gap: 12px; border: 1px solid transparent; margin-bottom: 6px; }
+  .file-item:hover { background: rgba(0,240,255,0.08); border-color: rgba(0,240,255,0.3); }
+  .file-item.active { background: rgba(255,0,224,0.12); border-color: var(--neon-magenta); }
+  .file-name { flex: 1; font-weight: 600; word-break: break-word; min-width: 200px; }
+  .file-meta { font-size: 0.78rem; color: var(--text-dim); }
+  .files-toggle { position: absolute; bottom: 90px; right: 20px; z-index: 21; padding: 10px 18px; background: rgba(0,0,0,0.65); border: 1px solid rgba(0,240,255,0.4); border-radius: 24px; color: var(--neon-cyan); font-family: 'Orbitron', sans-serif; font-size: 0.75rem; cursor: pointer; opacity: 0; transition: all 0.3s; }
+  .player-wrap:hover .files-toggle, .files-toggle.visible { opacity: 1; }
+  
+  @media (max-width: 600px) {
+    .title-overlay { max-width: calc(100% - 160px); font-size: 0.72rem; }
+    .ctrl-btn { width: 38px; height: 38px; }
+    .file-list-overlay { bottom: 70px; left: 10px; right: 10px; }
+    .files-toggle { bottom: 70px; right: 10px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="tg-restriction" id="tgRestriction" style="display:none;">
+  <div class="icon">🚫</div>
+  <h1>Telegram Only</h1>
+  <p>Yeh app sirf <strong>Telegram Mini App</strong> environment mein chalega.</p>
+</div>
+
+<div class="input-screen" id="inputScreen">
+  <div class="logo">⚡ NEON PLAYER</div>
+  <div class="input-box">
+    <input id="teraboxUrl" type="text" placeholder="🔗 TeraBox link paste karo..." />
+    <button id="loadBtn">
+      <span class="btn-loader"></span>
+      <span class="btn-text">▶ LOAD VIDEO</span>
+    </button>
+    <div class="input-error" id="inputError"></div>
+  </div>
+</div>
+
+<div class="loading-screen" id="loadingScreen">
+  <div class="spinner-wrap">
+    <div class="spinner-ring"></div><div class="spinner-ring"></div><div class="spinner-ring"></div>
+    <div class="spinner-center">⚡</div>
+  </div>
+  <div class="loading-title">NEON PLAYER</div>
+  <div class="loading-status" id="loadingStatus">Buffering<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span></div>
+</div>
+
+<div class="error-screen" id="errorScreen">
+  <div class="error-box">
+    <div class="error-icon">⚠️</div>
+    <div class="error-title" id="errorTitle">Cannot Play</div>
+    <div class="error-msg" id="errorMsg">Video load nahi ho payi.</div>
+    <button class="error-back-btn" id="backBtn">🔄 Back / Retry</button>
+  </div>
+</div>
+
+<div class="player-wrap" id="playerWrap">
+  <video id="video" controls playsinline autoplay></video>
+  <div class="title-overlay" id="titleOverlay"></div>
+  <div class="float-controls">
+    <button class="ctrl-btn" id="fsBtn">⛶</button>
+    <button class="ctrl-btn" id="pipBtn">◱</button>
+    <button class="ctrl-btn" id="muteBtn">🔊</button>
+  </div>
+  <button class="files-toggle" id="filesToggle">📁 FILES</button>
+  <div class="file-list-overlay" id="fileListOverlay"></div>
+</div>
+
+<script>
+const CONFIG = {
+  adNetwork: 'both',
+  adsgramBlockId: 'YOUR_ADSGRAM_BLOCK_ID',
+  monetagShowFn: 'show_YOUR_MONETAG_ZONE_ID',
+  workerUrl: 'https://teradltest.testingsd9.workers.dev',
+};
+
+// ── Telegram Check ──
+const tg = window.Telegram?.WebApp;
+if (!tg || !tg.initData || tg.initData.length === 0) {
+  document.getElementById('tgRestriction').style.display = 'flex';
+  throw new Error('Restricted: Telegram environment required.');
+}
+tg.ready(); tg.expand();
+
+// ── AdsGram ──
+let adsgramController = null;
+if (CONFIG.adNetwork !== 'none' && window.Adsgram && CONFIG.adsgramBlockId !== 'YOUR_ADSGRAM_BLOCK_ID') {
+  try { adsgramController = window.Adsgram.init({ blockId: CONFIG.adsgramBlockId }); } catch (e) {}
+}
+
+// ── Monetag ──
+function getMonetagShowFn() {
+  const fn = CONFIG.monetagShowFn;
+  return (window[fn] && typeof window[fn] === 'function') ? window[fn] : null;
+}
+
+async function showAd() {
+  const networks = CONFIG.adNetwork === 'both' ? ['adsgram', 'monetag'] : [CONFIG.adNetwork];
+  let shown = false;
+  for (const net of networks) {
+    try {
+      if (net === 'adsgram' && adsgramController) { await adsgramController.show(); shown = true; break; }
+      else if (net === 'monetag') { const fn = getMonetagShowFn(); if (fn) { await fn(); shown = true; break; } }
+    } catch (e) { console.warn(`Ad failed: ${net}`, e); }
+  }
+  if (shown && tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
+  return shown;
+}
+
+// ── Elements ──
+const $ = (id) => document.getElementById(id);
+const loadingScreen = $('loadingScreen'), loadingStatus = $('loadingStatus');
+const errorScreen = $('errorScreen'), errorMsg = $('errorMsg'), backBtn = $('backBtn');
+const playerWrap = $('playerWrap'), video = $('video'), titleOverlay = $('titleOverlay');
+const fileListOverlay = $('fileListOverlay'), filesToggle = $('filesToggle');
+const inputScreen = $('inputScreen'), teraboxInput = $('teraboxUrl'), loadBtn = $('loadBtn'), inputError = $('inputError');
+
+let hlsInstance = null, currentFiles = [];
+
+function escapeHtml(str) { const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
+
+function showInputError(msg) {
+  inputError.textContent = msg; inputError.classList.add('show');
+  setTimeout(() => inputError.classList.remove('show'), 4000);
+}
+
+// ── MAIN LOAD LOGIC (Ads + API Parallel) ──
+loadBtn.onclick = async () => {
+  let val = teraboxInput.value.trim();
+  
+  // Agar sirf ID hai toh URL banao
+  if (val && !val.startsWith('http')) {
+    val = 'https://terabox.com/s/' + val;
+  }
+
+  if (!val) { showInputError('TeraBox link daalein!'); return; }
+  if (!/terabox|terasharelink|1024terabox/i.test(val)) { 
+    showInputError('Valid TeraBox link nahi hai!'); return; 
+  }
+
+  // 1. Button ko Loading state me daalo
+  loadBtn.disabled = true;
+  loadBtn.classList.add('loading');
+  loadBtn.querySelector('.btn-text').textContent = 'LOADING...';
+  
+  // 2. API Fetch Start karo (Background me)
+  const apiPromise = fetch(`${CONFIG.workerUrl}/api/v1/terabox?url=${encodeURIComponent(val)}`)
+    .then(res => res.json())
+    .then(data => {
+      if (data.status !== 'success') throw new Error(data.error?.message || 'API error');
+      return data;
+    });
+
+  // 3. Ads Show karo (agar enabled hai)
+  if (CONFIG.adNetwork !== 'none') {
+    await showAd();
+  }
+
+  // 4. Ads ke baad API ka wait karo (taaki data ready mile)
+  try {
+    const data = await apiPromise;
+    currentFiles = data.files || [];
+    if (currentFiles.length === 0) throw new Error('Koi file nahi mili');
+
+    // 5. Player Load karo
+    inputScreen.style.display = 'none';
+    titleOverlay.textContent = data.title || currentFiles[0].name;
+    document.title = data.title ? `▶ ${data.title}` : '⚡ Neon Player';
+    
+    renderFileList(currentFiles);
+    playVideo(currentFiles[0]);
+
+  } catch (e) {
+    showInputError(e.message || 'Video load nahi ho payi. Link check karein.');
+    // Reset button
+    loadBtn.disabled = false;
+    loadBtn.classList.remove('loading');
+    loadBtn.querySelector('.btn-text').textContent = '▶ LOAD VIDEO';
+  }
+};
+
+function renderFileList(files) {
+  if (files.length <= 1) { filesToggle.style.display = 'none'; return; }
+  filesToggle.style.display = '';
+  fileListOverlay.innerHTML = `<h3>📁 Files (${files.length})</h3>`;
+  files.forEach((f, idx) => {
+    const div = document.createElement('div');
+    div.className = 'file-item' + (idx === 0 ? ' active' : '');
+    div.innerHTML = `<div class="file-name">${escapeHtml(f.name)}</div><div class="file-meta"><span>${f.size_fmt}</span> · ${f.duration || '—'}</div>`;
+    div.onclick = () => { playVideo(f); fileListOverlay.classList.remove('visible'); };
+    fileListOverlay.appendChild(div);
+  });
+}
+
+function playVideo(file) {
+  playerWrap.classList.add('show');
+  if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+
+  const isHls = file.stream && file.stream.includes('hls-stream');
+  const videoSrc = file.stream || file.url;
+
+  loadingScreen.classList.add('show'); 
+  loadingScreen.classList.remove('hide');
+  loadingStatus.innerHTML = 'Loading Stream<span class="dot">.</span><span class="dot">.</span><span class="dot">.</span>';
+
+  if (isHls && Hls.isSupported()) {
+    hlsInstance = new Hls({ maxBufferLength: 30 });
+    hlsInstance.loadSource(videoSrc); 
+    hlsInstance.attachMedia(video);
+    
+    hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+      loadingScreen.classList.add('hide');
+      video.play().catch(() => {});
+    });
+
+    hlsInstance.on(Hls.Events.ERROR, (e, data) => {
+      if (data.fatal) {
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hlsInstance.startLoad();
+        else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hlsInstance.recoverMediaError();
+        else showInputError('Stream error. Link expire ho sakta hai.');
+      }
+    });
+  } else {
+    video.src = videoSrc;
+    video.addEventListener('loadedmetadata', () => {
+      loadingScreen.classList.add('hide');
+      video.play().catch(() => {});
+    }, { once: true });
+  }
+}
+
+// Error Handling
+backBtn.onclick = () => {
+  errorScreen.classList.remove('show');
+  playerWrap.classList.remove('show');
+  inputScreen.style.display = 'flex';
+};
+
+// Controls & UI
+$('fsBtn').onclick = () => { if (!document.fullscreenElement) playerWrap.requestFullscreen().catch(() => {}); else document.exitFullscreen(); };
+$('pipBtn').onclick = async () => { try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else if (video.requestPictureInPicture) await video.requestPictureInPicture(); } catch (e) {} };
+$('muteBtn').onclick = (e) => { video.muted = !video.muted; e.target.textContent = video.muted ? '🔇' : '🔊'; };
+filesToggle.onclick = () => fileListOverlay.classList.toggle('visible');
+
+// Auto-fill logic
+(function init() {
+  const params = new URLSearchParams(window.location.search);
+  let link = params.get('url');
+  
+  if (!link) {
+    let startParam = tg?.initDataUnsafe?.start_param;
+    if (!startParam) startParam = params.get('tgWebAppStartParam');
+    if (startParam) {
+      try { startParam = decodeURIComponent(startParam); } catch(e){}
+      if (startParam.startsWith('http')) link = startParam;
+      else link = 'https://terabox.com/s/' + startParam;
+    }
+  }
+  
+  if (link) {
+    // Agar link mila (startapp se) toh Input Box me daal do, par auto-load mat karo
+    inputScreen.style.display = 'flex';
+    teraboxInput.value = link;
+  } else {
+    inputScreen.style.display = 'flex';
+  }
+})();
+</script>
+</body>
+</html>
