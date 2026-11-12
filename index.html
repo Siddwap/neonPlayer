@@ -77,7 +77,6 @@
   .load-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 0 30px rgba(0,240,255,0.6); }
   .load-btn:disabled { opacity: 0.7; cursor: not-allowed; }
   
-  /* Loader inside button */
   .btn-loader {
     width: 18px; height: 18px; border: 2px solid #000; border-top-color: transparent;
     border-radius: 50%; animation: spin 0.8s linear infinite; display: none;
@@ -91,7 +90,7 @@
   }
   .input-error.show { display: block; }
 
-  /* ─── NEW: TELEGRAM BOT LINK DESIGN ─── */
+  /* ─── TELEGRAM BOT LINK DESIGN ─── */
   .tg-bot-section {
     margin-top: 10px;
     display: flex;
@@ -126,7 +125,6 @@
     box-shadow: 0 0 30px rgba(34, 158, 217, 0.8);
   }
 
-  /* Shine Animation */
   .tg-bot-link::after {
     content: "";
     position: absolute;
@@ -245,6 +243,7 @@
 
 <div class="input-screen" id="inputScreen">
   <div class="logo">⚡ NEON PLAYER</div>
+  
   <div class="input-box">
     <input id="teraboxUrl" type="text" placeholder="🔗 TeraBox link paste karo..." />
     <button class="load-btn" id="loadBtn">
@@ -253,7 +252,6 @@
     </button>
     <div class="input-error" id="inputError"></div>
 
-    <!-- NEW: Telegram Bot Link -->
     <div class="tg-bot-section">
       <span class="tg-bot-text-small">For More Videos</span>
       <a href="https://t.me/desihub699_bot" target="_blank" class="tg-bot-link">
@@ -261,7 +259,6 @@
         Start The Bot
       </a>
     </div>
-
   </div>
 </div>
 
@@ -323,6 +320,7 @@ function getMonetagShowFn() {
   return (window[fn] && typeof window[fn] === 'function') ? window[fn] : null;
 }
 
+// Standard Rewarded Ad Show
 async function showAd() {
   const networks = CONFIG.adNetwork === 'both' ? ['adsgram', 'monetag'] : [CONFIG.adNetwork];
   let shown = false;
@@ -334,6 +332,27 @@ async function showAd() {
   }
   if (shown && tg?.HapticFeedback) tg.HapticFeedback.notificationOccurred('success');
   return shown;
+}
+
+// ── NEW: In-App Interstitial Ad ──
+function startInterstitialAds() {
+  try {
+    const showFn = getMonetagShowFn();
+    if (showFn) {
+      showFn({
+        type: 'inApp',
+        inAppSettings: {
+          frequency: 2,  // 2 ads per session
+          capping: 0.1,  // 6 minutes
+          interval: 30,  // 30 sec gap between ads
+          timeout: 5,    // 5 sec delay before first ad
+          everyPage: false
+        }
+      });
+    }
+  } catch (e) {
+    console.warn("In-App Ads failed to start", e);
+  }
 }
 
 // ── Elements ──
@@ -353,11 +372,10 @@ function showInputError(msg) {
   setTimeout(() => inputError.classList.remove('show'), 4000);
 }
 
-// ── MAIN LOAD LOGIC (Ads + API Parallel) ──
+// ── MAIN LOAD LOGIC ──
 loadBtn.onclick = async () => {
   let val = teraboxInput.value.trim();
   
-  // Agar sirf ID hai toh URL banao
   if (val && !val.startsWith('http')) {
     val = 'https://terabox.com/s/' + val;
   }
@@ -367,12 +385,10 @@ loadBtn.onclick = async () => {
     showInputError('Valid TeraBox link nahi hai!'); return; 
   }
 
-  // 1. Button ko Loading state me daalo
   loadBtn.disabled = true;
   loadBtn.classList.add('loading');
   loadBtn.querySelector('.btn-text').textContent = 'LOADING...';
   
-  // 2. API Fetch Start karo (Background me)
   const apiPromise = fetch(`${CONFIG.workerUrl}/api/v1/terabox?url=${encodeURIComponent(val)}`)
     .then(res => res.json())
     .then(data => {
@@ -380,18 +396,15 @@ loadBtn.onclick = async () => {
       return data;
     });
 
-  // 3. Ads Show karo (agar enabled hai)
   if (CONFIG.adNetwork !== 'none') {
     await showAd();
   }
 
-  // 4. Ads ke baad API ka wait karo (taaki data ready mile)
   try {
     const data = await apiPromise;
     currentFiles = data.files || [];
     if (currentFiles.length === 0) throw new Error('Koi file nahi mili');
 
-    // 5. Player Load karo
     inputScreen.style.display = 'none';
     titleOverlay.textContent = data.title || currentFiles[0].name;
     document.title = data.title ? `▶ ${data.title}` : '⚡ Neon Player';
@@ -401,7 +414,6 @@ loadBtn.onclick = async () => {
 
   } catch (e) {
     showInputError(e.message || 'Video load nahi ho payi. Link check karein.');
-    // Reset button
     loadBtn.disabled = false;
     loadBtn.classList.remove('loading');
     loadBtn.querySelector('.btn-text').textContent = '▶ LOAD VIDEO';
@@ -458,21 +470,23 @@ function playVideo(file) {
   }
 }
 
-// Error Handling
 backBtn.onclick = () => {
   errorScreen.classList.remove('show');
   playerWrap.classList.remove('show');
   inputScreen.style.display = 'flex';
 };
 
-// Controls & UI
 $('fsBtn').onclick = () => { if (!document.fullscreenElement) playerWrap.requestFullscreen().catch(() => {}); else document.exitFullscreen(); };
 $('pipBtn').onclick = async () => { try { if (document.pictureInPictureElement) await document.exitPictureInPicture(); else if (video.requestPictureInPicture) await video.requestPictureInPicture(); } catch (e) {} };
 $('muteBtn').onclick = (e) => { video.muted = !video.muted; e.target.textContent = video.muted ? '🔇' : '🔊'; };
 filesToggle.onclick = () => fileListOverlay.classList.toggle('visible');
 
-// Auto-fill logic
+// ── INIT ──
 (function init() {
+  // Start the background In-App Interstitial Ads
+  // (Yeh script load hone ke thodi der baad apne aap ads dikhayega)
+  setTimeout(startInterstitialAds, 1000); // 1 sec wait taaki SDK properly load ho jaye
+
   const params = new URLSearchParams(window.location.search);
   let link = params.get('url');
   
@@ -487,7 +501,6 @@ filesToggle.onclick = () => fileListOverlay.classList.toggle('visible');
   }
   
   if (link) {
-    // Agar link mila (startapp se) toh Input Box me daal do, par auto-load mat karo
     inputScreen.style.display = 'flex';
     teraboxInput.value = link;
   } else {
